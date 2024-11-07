@@ -1,4 +1,3 @@
-/.vscode
 /target
 test.c
 test.s
