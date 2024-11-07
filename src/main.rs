@@ -42,6 +42,8 @@ fn main() -> io::Result<()> {
                 if e.is_fatal() {
                     println!("{:x?}", e);
                     break;
+                } else {
+                    cpu.handle_exception(e);
                 }
             }
         }
