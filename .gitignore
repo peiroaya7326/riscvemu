@@ -1,0 +1,6 @@
+/.vscode
+/target
+test.c
+test.s
+test
+test.bin
