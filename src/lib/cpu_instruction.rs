@@ -1,3 +1,7 @@
+#![allow(unused)]
+
+use crate::cpu::Mode;
+use crate::lib::address::*;
 use crate::{cpu::Cpu, Exception};
 
 impl Cpu {
@@ -269,6 +273,11 @@ impl Cpu {
     pub fn execute_fence_tso(&mut self) {}
 
     #[inline(always)]
+    pub fn execute_sfence_vma(&mut self) {
+        return;
+    }
+
+    #[inline(always)]
     pub fn execute_pause(&mut self) {}
 
     #[inline(always)]
@@ -401,7 +410,16 @@ impl Cpu {
     pub fn execute_div(&mut self) {}
 
     #[inline(always)]
-    pub fn execute_divu(&mut self) {}
+    pub fn execute_divu(&mut self, rd: u64, rs1: u64, rs2: u64) {
+        let divisor = self.regs[rs2 as usize];
+        self.regs[rd as usize] = match divisor {
+            0 => 0xffffffff_ffffffff,
+            _ => {
+                let dividend = self.regs[rs1 as usize];
+                dividend.wrapping_div(divisor)
+            }
+        };
+    }
 
     #[inline(always)]
     pub fn execute_rem(&mut self) {}
@@ -422,7 +440,16 @@ impl Cpu {
     pub fn execute_remw(&mut self) {}
 
     #[inline(always)]
-    pub fn execute_remuw(&mut self) {}
+    pub fn execute_remuw(&mut self, rd: u64, rs1: u64, rs2: u64) {
+        let divisor = self.regs[rs2 as usize] as u32;
+        self.regs[rd as usize] = match divisor {
+            0 => self.regs[rs1 as usize],
+            _ => {
+                let dividend = self.regs[rs1 as usize] as u32;
+                dividend.wrapping_rem(divisor) as i32 as u64
+            }
+        };
+    }
 
     #[inline(always)]
     pub fn execute_lr_w(&mut self) {}
@@ -431,10 +458,24 @@ impl Cpu {
     pub fn execute_sc_w(&mut self) {}
 
     #[inline(always)]
-    pub fn execute_amoswap_w(&mut self) {}
+    pub fn execute_amoswap_w(&mut self, rd: u64, rs1: u64, rs2: u64) -> Result<(), Exception> {
+        let t = self.load(self.regs[rs1 as usize], 32)?;
+        self.store(self.regs[rs1 as usize], 32, self.regs[rs2 as usize])?;
+        self.regs[rd as usize] = t;
+        Ok(())
+    }
 
     #[inline(always)]
-    pub fn execute_amoadd_w(&mut self) {}
+    pub fn execute_amoadd_w(&mut self, rd: u64, rs1: u64, rs2: u64) -> Result<(), Exception> {
+        let t = self.load(self.regs[rs1 as usize], 32)?;
+        self.store(
+            self.regs[rs1 as usize],
+            32,
+            t.wrapping_add(self.regs[rs2 as usize]),
+        )?;
+        self.regs[rd as usize] = t;
+        Ok(())
+    }
 
     #[inline(always)]
     pub fn execute_amoxor_w(&mut self) {}
@@ -464,10 +505,24 @@ impl Cpu {
     pub fn execute_sc_d(&mut self) {}
 
     #[inline(always)]
-    pub fn execute_amoswap_d(&mut self) {}
+    pub fn execute_amoswap_d(&mut self, rd: u64, rs1: u64, rs2: u64) -> Result<(), Exception> {
+        let t = self.load(self.regs[rs1 as usize], 64)?;
+        self.store(self.regs[rs1 as usize], 64, self.regs[rs2 as usize])?;
+        self.regs[rd as usize] = t;
+        Ok(())
+    }
 
     #[inline(always)]
-    pub fn execute_amoadd_d(&mut self) {}
+    pub fn execute_amoadd_d(&mut self, rd: u64, rs1: u64, rs2: u64) -> Result<(), Exception> {
+        let t = self.load(self.regs[rs1 as usize], 64)?;
+        self.store(
+            self.regs[rs1 as usize],
+            64,
+            t.wrapping_add(self.regs[rs2 as usize]),
+        )?;
+        self.regs[rd as usize] = t;
+        Ok(())
+    }
 
     #[inline(always)]
     pub fn execute_amoxor_d(&mut self) {}
@@ -489,4 +544,74 @@ impl Cpu {
 
     #[inline(always)]
     pub fn execute_amomaxu_d(&mut self) {}
+
+    pub fn execute_sret(&mut self) {
+        // An MRET or SRET instruction is used to return from a
+        // trap in M-mode or S-mode respectively. When
+        // executing an xRET instruction, supposing xPP holds
+        // the value y, xIE is set to xPIE; the privilege mode is
+        // changed to y; xPIE is set to 1; and xPP is set to the
+        // least-privileged supported mode (U if U-mode is
+        // implemented, else M). If y≠M, xRET also sets MPRV=0.
+        let mut sstatus = self.csr.load(SSTATUS);
+        // When an SRET instruction is executed to return from the trap handler,
+        // the privilege level is set to user mode if the SPP bit is 0,
+        // or supervisor mode if the SPP bit is 1; SPP is then set to 0.
+        self.mode = match (sstatus >> 8) & 0b1 {
+            0 => Mode::User,
+            _ => Mode::Supervisor,
+        };
+        // SET MPRV to 0
+        let mut mstatus = self.csr.load(MSTATUS);
+        mstatus &= !(1 << 17);
+        self.csr.store(MSTATUS, mstatus);
+        // set SPP to 0
+        sstatus &= !(1 << 8);
+        // When an SRET instruction is executed,
+        // SIE is set to SPIE, then SPIE is set to 1.
+        let spie = (sstatus >> 5) & 0b1;
+        // clear SIE
+        sstatus &= !(1 << 1);
+        // set SIE to SPIE
+        sstatus |= spie << 1;
+        // set SPIE to 1
+        sstatus |= 1 << 5;
+        self.csr.store(SSTATUS, sstatus);
+        // update program counter
+        self.pc = self.csr.load(SEPC);
+    }
+
+    pub fn execute_mret(&mut self) {
+        // An MRET or SRET instruction is used to return from a
+        // trap in M-mode or S-mode respectively. When
+        // executing an xRET instruction, supposing xPP holds
+        // the value y, xIE is set to xPIE; the privilege mode is
+        // changed to y; xPIE is set to 1; and xPP is set to the
+        // least-privileged supported mode (U if U-mode is
+        // implemented, else M). If y≠M, xRET also sets MPRV=0.
+        let mut mstatus = self.csr.load(MSTATUS);
+        let mpie = (mstatus >> 7) & 0b1;
+        // clear MIE
+        mstatus &= !(1 << 3);
+        // set MIE to MPIE
+        mstatus |= mpie << 3;
+        self.mode = match (mstatus >> 11) & 0b11 {
+            0b11 => Mode::Machine,
+            0b01 => {
+                mstatus &= !(1 << 17);
+                Mode::Supervisor
+            }
+            _ => {
+                mstatus &= !(1 << 17);
+                Mode::User
+            }
+        };
+        // set MPIE to 1
+        mstatus |= 1 << 7;
+        // set MPP to least-privileged supported mode (U: 0b00)
+        mstatus &= !(0b11) << 11;
+        self.csr.store(MSTATUS, mstatus);
+        // update program counter
+        self.pc = self.csr.load(MEPC);
+    }
 }
