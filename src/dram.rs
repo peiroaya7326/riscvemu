@@ -30,7 +30,6 @@ impl Dram {
             return Err(Exception::StoreAMOAccessFault(addr));
         }
         let index = (addr - DRAM_BASE) as usize;
-        println!("{}", index);
         for i in 0..size / 8 {
             self.dram[index + i as usize] = (value >> (i * 8) & 0xff) as u8;
         }

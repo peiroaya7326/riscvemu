@@ -23,7 +23,7 @@ impl Cpu {
         }
     }
     /// Load a value from a dram.
-    pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
+    pub fn load(&self, addr: u64, size: u64) -> Result<u64, Exception> {
         self.bus.load(addr, size)
     }
 
@@ -43,9 +43,9 @@ impl Cpu {
         let op1 = inst & 0b11;
         let op2 = (inst >> 2) & 0b111;
         let op3 = (inst >> 5) & 0b11;
-        let rd = ((inst >> 7) & 0x1f) as usize;
-        let rs1 = ((inst >> 15) & 0x1f) as usize;
-        let rs2 = ((inst >> 20) & 0x1f) as usize;
+        let rd = (inst >> 7) & 0x1f;
+        let rs1 = (inst >> 15) & 0x1f;
+        let rs2 = (inst >> 20) & 0x1f;
         let funct3 = (inst >> 12) & 0x7;
         let funct7 = (inst >> 25) & 0x7f;
 
@@ -64,14 +64,16 @@ impl Cpu {
             // Group 0 (inst[6:5] == 00)
             (0b00, 0b000) => {
                 // Load
+                let imm = ((inst as i32 as i64) >> 20) as u64;
+                let addr = self.regs[rs1 as usize].wrapping_add(imm);
                 match funct3 {
-                    0b000 => self.execute_lb(),
-                    0b001 => self.execute_lh(),
-                    0b010 => self.execute_lw(),
-                    0b100 => self.execute_lbu(),
-                    0b101 => self.execute_lhu(),
-                    0b110 => self.execute_lwu(),
-                    0b011 => self.execute_ld(),
+                    0b000 => self.execute_lb(addr, rd)?,
+                    0b001 => self.execute_lh(addr, rd)?,
+                    0b010 => self.execute_lw(addr, rd)?,
+                    0b011 => self.execute_ld(addr, rd)?,
+                    0b100 => self.execute_lbu(addr, rd)?,
+                    0b101 => self.execute_lhu(addr, rd)?,
+                    0b110 => self.execute_lwu(addr, rd)?,
                     _ => {
                         return Err(Exception::IllegalInstruction(inst));
                     }
@@ -92,16 +94,19 @@ impl Cpu {
             }
             (0b00, 0b100) => {
                 // OP-IMM
+                // imm[11:0] = inst[31:20]
+                let imm = ((inst & 0xfff00000) as i32 as i64 >> 20) as u64;
+                let shamt = (imm & 0x3f) as u32;
                 match (funct7, funct3) {
-                    (_, 0b000) => self.execute_addi(),
-                    (_, 0b010) => self.execute_slti(),
-                    (_, 0b011) => self.execute_sltiu(),
-                    (_, 0b100) => self.execute_xori(),
-                    (_, 0b110) => self.execute_ori(),
-                    (_, 0b111) => self.execute_andi(),
-                    (0b000_0000, 0b001) => self.execute_slli(),
-                    (0b000_0000, 0b101) => self.execute_srli(),
-                    (0b010_0000, 0b101) => self.execute_srai(),
+                    (_, 0b000) => self.execute_addi(rd, rs1, imm),
+                    (_, 0b010) => self.execute_slti(rd, rs1, imm),
+                    (_, 0b011) => self.execute_sltiu(rd, rs1, imm),
+                    (_, 0b100) => self.execute_xori(rd, rs1, imm),
+                    (_, 0b110) => self.execute_ori(rd, rs1, imm),
+                    (_, 0b111) => self.execute_andi(rd, rs1, imm),
+                    (0b000_0000, 0b001) => self.execute_slli(rd, rs1, shamt),
+                    (0b000_0000, 0b101) => self.execute_srli(rd, rs1, shamt),
+                    (0b010_0000, 0b101) => self.execute_srai(rd, rs1, shamt),
                     _ => {
                         return Err(Exception::IllegalInstruction(inst));
                     }
@@ -109,15 +114,20 @@ impl Cpu {
             }
             (0b00, 0b101) => {
                 // AUIPC
-                self.execute_auipc()
+                let imm = (inst & 0xfffff000) as i32 as i64 as u64;
+                self.execute_auipc(rd, imm)
             }
             (0b00, 0b110) => {
                 // OP-IMM32
+                let imm = ((inst as i32 as i64) >> 20) as u64;
+                
+                // "SLLIW, SRLIW, and SRAIW encodings with imm[5] ̸= 0 are reserved."
+                let shamt = (imm & 0x1f) as u32;
                 match (funct7, funct3) {
-                    (_, 0b000) => self.execute_addi(),
-                    (0b000_0000, 0b001) => self.execute_slti(),
-                    (0b000_0000, 0b101) => self.execute_sltiu(),
-                    (0b010_0000, 0b101) => self.execute_xori(),
+                    (_, 0b000) => self.execute_addiw(rd, rs1, imm),
+                    (0b000_0000, 0b001) => self.execute_slliw(rd, rs1, shamt),
+                    (0b000_0000, 0b101) => self.execute_srliw(rd, rs1, shamt),
+                    (0b010_0000, 0b101) => self.execute_sraiw(rd, rs1, shamt),
                     _ => {
                         return Err(Exception::IllegalInstruction(inst));
                     }
@@ -127,11 +137,14 @@ impl Cpu {
             // Group 1 (inst[6:5] == 01)
             (0b01, 0b000) => {
                 // Store
+                // imm[11:5|4:0] = inst[31:25|11:7]
+                let imm = (((inst & 0xfe000000) as i32 as i64 >> 20) as u64) | ((inst >> 7) & 0x1f);
+                let addr = self.regs[rs1 as usize].wrapping_add(imm);
                 match funct3 {
-                    0b000 => self.execute_sb(),
-                    0b001 => self.execute_sh(),
-                    0b010 => self.execute_sw(),
-                    0b011 => self.execute_sd(),
+                    0b000 => self.execute_sb(addr, rs2)?,
+                    0b001 => self.execute_sh(addr, rs2)?,
+                    0b010 => self.execute_sw(addr, rs2)?,
+                    0b011 => self.execute_sd(addr, rs2)?,
                     _ => {
                         return Err(Exception::IllegalInstruction(inst));
                     }
@@ -151,25 +164,26 @@ impl Cpu {
             }
             (0b01, 0b100) => {
                 // OP
+                let shamt = ((self.regs[rs2 as usize] & 0x3f) as u64) as u32;
                 match (funct7, funct3) {
-                    (0b000_0000, 0b000) => self.execute_add(),
-                    (0b010_0000, 0b000) => self.execute_sub(),
-                    (0b000_0000, 0b001) => self.execute_sll(),
-                    (0b000_0000, 0b010) => self.execute_slt(),
-                    (0b000_0000, 0b011) => self.execute_sltu(),
-                    (0b000_0000, 0b100) => self.execute_xor(),
-                    (0b000_0000, 0b101) => self.execute_srl(),
-                    (0b010_0000, 0b101) => self.execute_sra(),
-                    (0b000_0000, 0b110) => self.execute_or(),
-                    (0b000_0000, 0b111) => self.execute_and(),
-                    (0b000_0001, 0b000) => self.execute_mul(),
-                    (0b000_0001, 0b001) => self.execute_mulh(),
-                    (0b000_0001, 0b010) => self.execute_mulhsu(),
-                    (0b000_0001, 0b011) => self.execute_mulhu(),
-                    (0b000_0001, 0b100) => self.execute_div(),
-                    (0b000_0001, 0b101) => self.execute_divu(),
-                    (0b000_0001, 0b110) => self.execute_rem(),
-                    (0b000_0001, 0b111) => self.execute_remu(),
+                    (0b000_0000, 0b000) => self.execute_add(rd, rs1, rs2),
+                    (0b010_0000, 0b000) => self.execute_sub(rd, rs1, rs2),
+                    (0b000_0000, 0b001) => self.execute_sll(rd, rs1, shamt),
+                    (0b000_0000, 0b010) => self.execute_slt(rd, rs1, rs2),
+                    (0b000_0000, 0b011) => self.execute_sltu(rd, rs1, rs2),
+                    (0b000_0000, 0b100) => self.execute_xor(rd, rs1, rs2),
+                    (0b000_0000, 0b101) => self.execute_srl(rd, rs1, shamt),
+                    (0b010_0000, 0b101) => self.execute_sra(rd, rs1, shamt),
+                    (0b000_0000, 0b110) => self.execute_or(rd, rs1, rs2),
+                    (0b000_0000, 0b111) => self.execute_and(rd, rs1, rs2),
+                    (0b000_0001, 0b000) => self.execute_mul(rd, rs1, rs2),
+                    // (0b000_0001, 0b001) => self.execute_mulh(),
+                    // (0b000_0001, 0b010) => self.execute_mulhsu(),
+                    // (0b000_0001, 0b011) => self.execute_mulhu(),
+                    // (0b000_0001, 0b100) => self.execute_div(),
+                    // (0b000_0001, 0b101) => self.execute_divu(),
+                    // (0b000_0001, 0b110) => self.execute_rem(),
+                    // (0b000_0001, 0b111) => self.execute_remu(),
                     _ => {
                         return Err(Exception::IllegalInstruction(inst));
                     }
@@ -177,21 +191,22 @@ impl Cpu {
             }
             (0b01, 0b101) => {
                 // LUI
-                self.execute_lui()
+                self.execute_lui(inst, rd)
             }
             (0b01, 0b110) => {
                 // OP-32
+                let shamt = (self.regs[rs2 as usize] & 0x1f) as u32;
                 match (funct7, funct3) {
-                    (0b000_0000, 0b000) => self.execute_addw(),
-                    (0b010_0000, 0b000) => self.execute_subw(),
-                    (0b000_0000, 0b001) => self.execute_sllw(),
-                    (0b000_0000, 0b101) => self.execute_srlw(),
-                    (0b010_0000, 0b101) => self.execute_sraw(),
-                    (0b000_0001, 0b000) => self.execute_mulw(),
-                    (0b000_0001, 0b100) => self.execute_divw(),
-                    (0b000_0001, 0b101) => self.execute_divuw(),
-                    (0b000_0001, 0b110) => self.execute_remw(),
-                    (0b000_0001, 0b111) => self.execute_remuw(),
+                    (0b000_0000, 0b000) => self.execute_addw(rd, rs1, rs2),
+                    (0b010_0000, 0b000) => self.execute_subw(rd, rs1, rs2),
+                    (0b000_0000, 0b001) => self.execute_sllw(rd, rs1, shamt),
+                    (0b000_0000, 0b101) => self.execute_srlw(rd, rs1, shamt),
+                    (0b010_0000, 0b101) => self.execute_sraw(rd, rs1, shamt),
+                    // (0b000_0001, 0b000) => self.execute_mulw(),
+                    // (0b000_0001, 0b100) => self.execute_divw(),
+                    // (0b000_0001, 0b101) => self.execute_divuw(),
+                    // (0b000_0001, 0b110) => self.execute_remw(),
+                    // (0b000_0001, 0b111) => self.execute_remuw(),
                     _ => {
                         return Err(Exception::IllegalInstruction(inst));
                     }
@@ -227,13 +242,18 @@ impl Cpu {
             // Group 3 (inst[6:5] == 11)
             (0b11, 0b000) => {
                 // BRANCH
+                // imm[12|10:5|4:1|11] = inst[31|30:25|11:8|7]
+                let imm = (((inst & 0x80000000) as i32 as i64 >> 19) as u64)
+                                | ((inst & 0x80) << 4) // imm[11]
+                                | ((inst >> 20) & 0x7e0) // imm[10:5]
+                                | ((inst >> 7) & 0x1e); // imm[4:1]
                 match funct3 {
-                    0b000 => self.execute_beq(),
-                    0b001 => self.execute_bne(),
-                    0b100 => self.execute_blt(),
-                    0b101 => self.execute_bge(),
-                    0b110 => self.execute_bltu(),
-                    0b111 => self.execute_bgeu(),
+                    0b000 => inst_step = self.execute_beq(rs1, rs2, imm),
+                    0b001 => inst_step = self.execute_bne(rs1, rs2, imm),
+                    0b100 => inst_step = self.execute_blt(rs1, rs2, imm),
+                    0b101 => inst_step = self.execute_bge(rs1, rs2, imm),
+                    0b110 => inst_step = self.execute_bltu(rs1, rs2, imm),
+                    0b111 => inst_step = self.execute_bgeu(rs1, rs2, imm),
                     _ => {
                         return Err(Exception::IllegalInstruction(inst));
                     }
@@ -241,7 +261,9 @@ impl Cpu {
             }
             (0b11, 0b001) => {
                 // JALR
-                self.execute_jalr()
+                let imm = ((((inst & 0xfff00000) as i32) as i64) >> 20) as u64;
+                self.execute_jalr(rd, rs1, imm);
+                inst_step = 0;
             }
             (0b11, 0b010) => {
                 // reserved
@@ -249,19 +271,23 @@ impl Cpu {
             }
             (0b11, 0b011) => {
                 // JAL
-                self.execute_jal()
+                // imm[20|10:1|11|19:12] = inst[31|30:21|20|19:12]
+                let imm = (((inst & 0x80000000) as i32 as i64 >> 11) as u64) // imm[20]
+                    | (inst & 0xff000) // imm[19:12]
+                    | ((inst >> 9) & 0x800) // imm[11]
+                    | ((inst >> 20) & 0x7fe); // imm[10:1]
+                self.execute_jal(rd, imm);
+                inst_step = 0;
             }
             (0b11, 0b100) => {
                 // SYSTEM
                 match (rs2, funct3) {
-                    (_, 0b001) => self.execute_csrrw(),
-                    (_, 0b010) => self.execute_csrrs(),
-                    (_, 0b011) => self.execute_csrrc(),
-                    (_, 0b101) => self.execute_csrrwi(),
-                    (_, 0b110) => self.execute_csrrsi(),
-                    (_, 0b111) => self.execute_csrrci(),
-                    (0b00000, 0b000) => self.execute_divw(),
-                    (0b00001, 0b000) => self.execute_divuw(),
+                    // (_, 0b001) => self.execute_csrrw(),
+                    // (_, 0b010) => self.execute_csrrs(),
+                    // (_, 0b011) => self.execute_csrrc(),
+                    // (_, 0b101) => self.execute_csrrwi(),
+                    // (_, 0b110) => self.execute_csrrsi(),
+                    // (_, 0b111) => self.execute_csrrci(),
                     // (0b01101, 0b000) => self.execute_wrs_nto(),
                     // (0b11101, 0b000) => self.execute_wrs_sto(),
                     _ => {

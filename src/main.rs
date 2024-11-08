@@ -30,7 +30,7 @@ fn main() -> io::Result<()> {
             Err(e) => {
                 cpu.handle_exception(e);
                 if e.is_fatal() {
-                    println!("{:?}", e);
+                    println!("Failed to fetch instruction: {:?}", e);
                     break;
                 }
                 continue;
@@ -40,7 +40,7 @@ fn main() -> io::Result<()> {
             Ok(_) => {}
             Err(e) => {
                 if e.is_fatal() {
-                    println!("{:x?}", e);
+                    println!("Failed to execute instruction: {:?}", e);
                     break;
                 } else {
                     cpu.handle_exception(e);
