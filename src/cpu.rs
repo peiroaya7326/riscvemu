@@ -120,7 +120,7 @@ impl Cpu {
             (0b00, 0b110) => {
                 // OP-IMM32
                 let imm = ((inst as i32 as i64) >> 20) as u64;
-                
+
                 // "SLLIW, SRLIW, and SRAIW encodings with imm[5] ̸= 0 are reserved."
                 let shamt = (imm & 0x1f) as u32;
                 match (funct7, funct3) {
@@ -281,13 +281,15 @@ impl Cpu {
             }
             (0b11, 0b100) => {
                 // SYSTEM
+                let csr_addr = inst >> 20;
+                let uimm = rs1 as u64;
                 match (rs2, funct3) {
-                    // (_, 0b001) => self.execute_csrrw(),
-                    // (_, 0b010) => self.execute_csrrs(),
-                    // (_, 0b011) => self.execute_csrrc(),
-                    // (_, 0b101) => self.execute_csrrwi(),
-                    // (_, 0b110) => self.execute_csrrsi(),
-                    // (_, 0b111) => self.execute_csrrci(),
+                    (_, 0b001) => self.execute_csrrw(csr_addr, rd, rs1),
+                    (_, 0b010) => self.execute_csrrs(csr_addr, rd, rs1),
+                    (_, 0b011) => self.execute_csrrc(csr_addr, rd, rs1),
+                    (_, 0b101) => self.execute_csrrwi(csr_addr, rd, uimm),
+                    (_, 0b110) => self.execute_csrrsi(csr_addr, rd, uimm),
+                    (_, 0b111) => self.execute_csrrci(csr_addr, rd, uimm),
                     // (0b01101, 0b000) => self.execute_wrs_nto(),
                     // (0b11101, 0b000) => self.execute_wrs_sto(),
                     _ => {

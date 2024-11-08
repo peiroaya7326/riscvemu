@@ -1,4 +1,5 @@
 use crate::cpu::Cpu;
+use crate::lib::address::*;
 
 impl Cpu {
     pub fn print_registers(&self) {
@@ -32,5 +33,23 @@ impl Cpu {
                 );
             }
         }
+        let csr_output = format!(
+            "{}\n{}\n",
+            format!(
+                "mstatus = {:<#18x}  mtvec = {:<#18x}  mepc = {:<#18x}  mcause = {:<#18x}",
+                self.csr.load(MSTATUS),
+                self.csr.load(MTVEC),
+                self.csr.load(MEPC),
+                self.csr.load(MCAUSE),
+            ),
+            format!(
+                "sstatus = {:<#18x}  stvec = {:<#18x}  sepc = {:<#18x}  scause = {:<#18x}",
+                self.csr.load(SSTATUS),
+                self.csr.load(STVEC),
+                self.csr.load(SEPC),
+                self.csr.load(SCAUSE),
+            ),
+        );
+        println!("{}", csr_output);
     }
 }

@@ -323,25 +323,65 @@ impl Cpu {
     #[inline(always)]
     pub fn execute_sraw(&mut self, rd: u64, rs1: u64, shamt: u32) {
         self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32) >> (shamt as i32)) as u64;
-    } 
+    }
+
+    // ---------------------------------------
+    // Instruction | rd  | rs1 | Read | Write
+    // ---------------------------------------
+    // CSRRW       | x0  | -   | no   | yes
+    // CSRRW       | !x0 | -   | yes  | yes
+    // CSRRS/C     | -   | x0  | yes  | no
+    // CSRRS/C     | -   | !x0 | yes  | yes
 
     #[inline(always)]
-    pub fn execute_csrrw(&mut self) {}
+    pub fn execute_csrrw(&mut self, csr_addr: u64, rd: u64, rs1: u64) {
+        let t = self.csr.load(csr_addr);
+        self.csr.store(csr_addr, self.regs[rs1 as usize]);
+        self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
+    }
 
     #[inline(always)]
-    pub fn execute_csrrs(&mut self) {}
+    pub fn execute_csrrs(&mut self, csr_addr: u64, rd: u64, rs1: u64) {
+        let t = self.csr.load(csr_addr);
+        self.csr.store(csr_addr, t | self.regs[rs1 as usize]);
+        self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
+    }
 
     #[inline(always)]
-    pub fn execute_csrrc(&mut self) {}
+    pub fn execute_csrrc(&mut self, csr_addr: u64, rd: u64, rs1: u64) {
+        let t = self.csr.load(csr_addr);
+        self.csr.store(csr_addr, t & (!self.regs[rs1 as usize]));
+        self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
+    }
+
+    // ---------------------------------------
+    // Instruction | rd  | uimm | Read | Write
+    // ---------------------------------------
+    // CSRRWI      | x0  | -    | no   | yes
+    // CSRRWI      | !x0 | -    | yes  | yes
+    // CSRRS/CI    | -   | 0    | yes  | no
+    // CSRRS/CI    | -   | !0   | yes  | yes
 
     #[inline(always)]
-    pub fn execute_csrrwi(&mut self) {}
+    pub fn execute_csrrwi(&mut self, csr_addr: u64, rd: u64, uimm: u64) {
+        let t = self.csr.load(csr_addr);
+        self.csr.store(csr_addr, uimm);
+        self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
+    }
 
     #[inline(always)]
-    pub fn execute_csrrsi(&mut self) {}
+    pub fn execute_csrrsi(&mut self, csr_addr: u64, rd: u64, uimm: u64) {
+        let t = self.csr.load(csr_addr);
+        self.csr.store(csr_addr, t | uimm);
+        self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
+    }
 
     #[inline(always)]
-    pub fn execute_csrrci(&mut self) {}
+    pub fn execute_csrrci(&mut self, csr_addr: u64, rd: u64, uimm: u64) {
+        let t = self.csr.load(csr_addr);
+        self.csr.store(csr_addr, t & (!uimm));
+        self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
+    }
 
     #[inline(always)]
     pub fn execute_mul(&mut self, rd: u64, rs1: u64, rs2: u64) {
