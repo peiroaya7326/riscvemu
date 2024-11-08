@@ -32,7 +32,7 @@ impl Cpu {
     }
 
     #[inline(always)]
-    pub fn execute_beq(&mut self, rs1: u64, rs2: u64, imm: u64) -> usize {
+    pub fn execute_beq(&mut self, rs1: u64, rs2: u64, imm: u64) -> u64 {
         if self.regs[rs1 as usize] == self.regs[rs2 as usize] {
             self.pc = self.pc.wrapping_add(imm);
             return 0;
@@ -41,7 +41,7 @@ impl Cpu {
     }
 
     #[inline(always)]
-    pub fn execute_bne(&mut self, rs1: u64, rs2: u64, imm: u64) -> usize {
+    pub fn execute_bne(&mut self, rs1: u64, rs2: u64, imm: u64) -> u64 {
         if self.regs[rs1 as usize] != self.regs[rs2 as usize] {
             self.pc = self.pc.wrapping_add(imm);
             return 0;
@@ -50,7 +50,7 @@ impl Cpu {
     }
 
     #[inline(always)]
-    pub fn execute_blt(&mut self, rs1: u64, rs2: u64, imm: u64) -> usize {
+    pub fn execute_blt(&mut self, rs1: u64, rs2: u64, imm: u64) -> u64 {
         if (self.regs[rs1 as usize] as i64) < (self.regs[rs2 as usize] as i64) {
             self.pc = self.pc.wrapping_add(imm);
             return 0;
@@ -59,7 +59,7 @@ impl Cpu {
     }
 
     #[inline(always)]
-    pub fn execute_bge(&mut self, rs1: u64, rs2: u64, imm: u64) -> usize {
+    pub fn execute_bge(&mut self, rs1: u64, rs2: u64, imm: u64) -> u64 {
         if (self.regs[rs1 as usize] as i64) >= (self.regs[rs2 as usize] as i64) {
             self.pc = self.pc.wrapping_add(imm);
             return 0;
@@ -68,7 +68,7 @@ impl Cpu {
     }
 
     #[inline(always)]
-    pub fn execute_bltu(&mut self, rs1: u64, rs2: u64, imm: u64) -> usize {
+    pub fn execute_bltu(&mut self, rs1: u64, rs2: u64, imm: u64) -> u64 {
         if self.regs[rs1 as usize] < self.regs[rs2 as usize] {
             self.pc = self.pc.wrapping_add(imm);
             return 0;
@@ -77,7 +77,7 @@ impl Cpu {
     }
 
     #[inline(always)]
-    pub fn execute_bgeu(&mut self, rs1: u64, rs2: u64, imm: u64) -> usize {
+    pub fn execute_bgeu(&mut self, rs1: u64, rs2: u64, imm: u64) -> u64 {
         if self.regs[rs1 as usize] >= self.regs[rs2 as usize] {
             self.pc = self.pc.wrapping_add(imm);
             return 0;

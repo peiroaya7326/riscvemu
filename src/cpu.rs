@@ -67,14 +67,11 @@ impl Cpu {
         let funct3 = (inst >> 12) & 0x7;
         let funct7 = (inst >> 25) & 0x7f;
 
-        let mut inst_step: usize = 4;
-        if op1 == 0b10 {
-            inst_step = 2;
-        } else if op1 == 0b11 {
-            inst_step = 4;
-        } else {
-            return Err(Exception::IllegalInstruction(inst));
-        }
+        let mut inst_step: u64 = match op1 {
+            0b10 => 2,
+            0b11 => 4,
+            _ => return Err(Exception::IllegalInstruction(inst)),
+        };
 
         self.regs[0] = 0;
 
@@ -382,7 +379,7 @@ impl Cpu {
             }
         }
 
-        self.pc = self.pc.wrapping_add(inst_step as u64);
+        self.pc = self.pc.wrapping_add(inst_step);
         Ok(())
     }
 

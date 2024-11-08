@@ -3,11 +3,12 @@ mod cpu;
 mod csr;
 mod dram;
 mod exception;
+mod interrupt;
 mod lib;
 
 use cpu::*;
 use exception::*;
-use lib::cpu_inspect::*;
+use interrupt::*;
 use std::env;
 use std::fs::File;
 use std::io;
