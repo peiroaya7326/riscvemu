@@ -384,7 +384,7 @@ impl Cpu {
     }
 
     pub fn handle_exception(&mut self, exception: Exception) {
-        let exception_pc = self.pc.wrapping_sub(4);
+        let exception_pc = self.pc;
         let prev_mode = self.mode;
         let cause = exception.code();
 
