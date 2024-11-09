@@ -332,8 +332,8 @@ impl Cpu {
                 let csr_addr = inst >> 20;
                 let uimm = rs1 as u64;
                 match (rs2, funct3) {
-                    // (0b0, 0b000) => self.execute_ecall(),
-                    // (0b1, 0b000) => self.execute_ebreak(),
+                    (0b0, 0b000) => self.execute_ecall()?,
+                    (0b1, 0b000) => self.execute_ebreak()?,
                     (0b00010, 0b000) => match funct7 {
                         0b0001000 => self.execute_sret(),
                         0b0011000 => self.execute_mret(),
@@ -453,5 +453,5 @@ impl Cpu {
         }
     }
 
-    pub fn handle_interrupt(&self) {}
+    pub fn handle_interrupt(&self, interrupt: Interrupt) {}
 }

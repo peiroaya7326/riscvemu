@@ -281,10 +281,19 @@ impl Cpu {
     pub fn execute_pause(&mut self) {}
 
     #[inline(always)]
-    pub fn execute_ecall(&mut self) {}
+    pub fn execute_ecall(&mut self) -> Result<(), Exception> {
+        match self.mode {
+            Mode::User => Err(Exception::EnvironmentCallFromUMode(self.pc)),
+            Mode::Supervisor => Err(Exception::EnvironmentCallFromSMode(self.pc)),
+            Mode::Machine => Err(Exception::EnvironmentCallFromMMode(self.pc)),
+            _ => unreachable!(),
+        }
+    }
 
     #[inline(always)]
-    pub fn execute_ebreak(&mut self) {}
+    pub fn execute_ebreak(&mut self) -> Result<(), Exception> {
+        Err(Exception::Breakpoint(self.pc))
+    }
 
     #[inline(always)]
     pub fn execute_addiw(&mut self, rd: u64, rs1: u64, imm: u64) {
