@@ -395,6 +395,12 @@ impl Cpu {
             self.mode = Mode::Supervisor;
         }
         // 1.
+        // The mtvec register must always be implemented, but can contain a 
+        // read-only value. If mtvec is writable, the set of values the register
+        // may hold can vary by implementation. The value in the BASE field
+        // must always be aligned on a 4-byte boundary, and the MODE setting 
+        // may impose additional alignment constraints on the value in the 
+        // BASE field.
         // The mtvec register is an MXLEN-bit WARL read/write register that
         // holds trap vector configuration, consisting of a vector base
         // address (BASE) and a vector mode (MODE).
@@ -424,27 +430,47 @@ impl Cpu {
         // xPIE is set to the value of xIE; xIE is set to 0; and xPP is set to y.
         match self.mode {
             Mode::Machine => {
-                self.pc = self.csr.load(MTVEC);
+                let mtvec = self.csr.load(MTVEC);
+                let base = mtvec & !0b11;
+                let _mode = mtvec & 0b11;
+                // When MODE=Direct, all traps into machine mode cause the pc to be
+                // set to the address in the BASE field. When MODE=Vectored, all
+                // synchronous exceptions into machine mode cause the pc to be set
+                // to the address in the BASE field, whereas interrupts cause the pc
+                // to be set to the address in the BASE field plus four times the
+                // interrupt cause number.
+                self.pc = base;
                 self.csr.store(MEPC, exception_pc as u64);
                 self.csr.store(MCAUSE, cause);
-                self.csr.store(MTVAL, 0);
+                self.csr.store(MTVAL, exception.code());
                 let mut mstatus = self.csr.load(MSTATUS);
                 let mie = (mstatus >> 3) & 0b1;
+                // set xIE = 0
+                mstatus &= !(1 << 3);
+                // set xPIE = previous xIE
                 mstatus &= !(1 << 7);
                 mstatus |= mie << 7;
+                // set xPP = previous mode
                 mstatus &= !(0b11 << 11);
                 mstatus |= prev_mode.code() << 11;
                 self.csr.store(MSTATUS, mstatus);
             }
             Mode::Supervisor => {
-                self.pc = self.csr.load(STVEC);
+                let stvec = self.csr.load(STVEC);
+                let base = stvec & !0b11;
+                let _mode = stvec & 0b11;
+                self.pc = base;
                 self.csr.store(SEPC, exception_pc as u64);
                 self.csr.store(SCAUSE, cause);
-                self.csr.store(STVAL, 0);
+                self.csr.store(STVAL, exception.code());
                 let mut sstatus = self.csr.load(SSTATUS);
                 let sie = (sstatus >> 1) & 0b1;
+                // set xIE = 0
+                sstatus &= !(1 << 1);
+                // set xPIE = previous xIE
                 sstatus &= !(1 << 5);
                 sstatus |= sie << 5;
+                // set xPP = previous mode
                 sstatus &= !(0b1 << 8);
                 sstatus |= prev_mode.code() << 8;
                 self.csr.store(SSTATUS, sstatus);
