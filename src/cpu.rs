@@ -1,6 +1,7 @@
 use crate::bus::*;
 use crate::csr::*;
 use crate::exception::*;
+use crate::interrupt::*;
 use crate::lib::address::*;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -395,11 +396,11 @@ impl Cpu {
             self.mode = Mode::Supervisor;
         }
         // 1.
-        // The mtvec register must always be implemented, but can contain a 
+        // The mtvec register must always be implemented, but can contain a
         // read-only value. If mtvec is writable, the set of values the register
         // may hold can vary by implementation. The value in the BASE field
-        // must always be aligned on a 4-byte boundary, and the MODE setting 
-        // may impose additional alignment constraints on the value in the 
+        // must always be aligned on a 4-byte boundary, and the MODE setting
+        // may impose additional alignment constraints on the value in the
         // BASE field.
         // The mtvec register is an MXLEN-bit WARL read/write register that
         // holds trap vector configuration, consisting of a vector base
@@ -479,5 +480,81 @@ impl Cpu {
         }
     }
 
-    pub fn handle_interrupt(&self, interrupt: Interrupt) {}
+    pub fn handle_interrupt(&mut self, interrupt: Interrupt) {
+        let interrupt_pc = self.pc;
+        let prev_mode = self.mode;
+        let cause = interrupt.code();
+        let cause_code = cause & !INTERRUPT_BIT;
+
+        let is_user_or_supervisor = prev_mode != Mode::Machine;
+        let mideleg = self.csr.load(MIDELEG);
+        let is_interrupt_delegated = (mideleg.wrapping_shr(cause_code as u32) & 1) != 0;
+        if is_user_or_supervisor && is_interrupt_delegated {
+            self.mode = Mode::Supervisor;
+        }
+        match self.mode {
+            Mode::Machine => {
+                let mtvec = self.csr.load(MTVEC);
+                let base = mtvec & !0b11;
+                let mode = mtvec & 0b11;
+                // When MODE=Direct, all traps into machine mode cause the pc to be
+                // set to the address in the BASE field. When MODE=Vectored, all
+                // synchronous exceptions into machine mode cause the pc to be set
+                // to the address in the BASE field, whereas interrupts cause the pc
+                // to be set to the address in the BASE field plus four times the
+                // interrupt cause number.
+                self.pc = match mode {
+                    // Direct
+                    0b00 => base,
+                    // Vectored
+                    0b01 => base + cause_code << 2,
+                    _ => unreachable!(),
+                };
+                self.csr.store(MEPC, interrupt_pc as u64);
+                self.csr.store(MCAUSE, cause);
+                // When a trap is taken into M-mode, mtval is either set to zero or
+                // written with exception-specific information to assist software in
+                // handling the trap.
+                self.csr.store(MTVAL, 0);
+                let mut mstatus = self.csr.load(MSTATUS);
+                let mie = (mstatus >> 3) & 0b1;
+                // set xIE = 0
+                mstatus &= !(1 << 3);
+                // set xPIE = previous xIE
+                mstatus &= !(1 << 7);
+                mstatus |= mie << 7;
+                // set xPP = previous mode
+                mstatus &= !(0b11 << 11);
+                mstatus |= prev_mode.code() << 11;
+                self.csr.store(MSTATUS, mstatus);
+            }
+            Mode::Supervisor => {
+                let stvec = self.csr.load(STVEC);
+                let base = stvec & !0b11;
+                let mode = stvec & 0b11;
+                self.pc  = match mode {
+                    // Direct
+                    0b00 => base,
+                    // Vectored
+                    0b01 => base + cause_code << 2,
+                    _ => unreachable!(),
+                };
+                self.csr.store(SEPC, interrupt_pc as u64);
+                self.csr.store(SCAUSE, cause);
+                self.csr.store(STVAL, 0);
+                let mut sstatus = self.csr.load(SSTATUS);
+                let sie = (sstatus >> 1) & 0b1;
+                // set xIE = 0
+                sstatus &= !(1 << 1);
+                // set xPIE = previous xIE
+                sstatus &= !(1 << 5);
+                sstatus |= sie << 5;
+                // set xPP = previous mode
+                sstatus &= !(0b1 << 8);
+                sstatus |= prev_mode.code() << 8;
+                self.csr.store(SSTATUS, sstatus);
+            }
+            _ => {}
+        }
+    }
 }
