@@ -48,6 +48,10 @@ fn main() -> io::Result<()> {
                 }
             }
         }
+        match cpu.check_interrupt() {
+            Some(interrupt) => cpu.handle_interrupt(interrupt),
+            None => (),
+        }
     }
     cpu.print_registers();
     Ok(())

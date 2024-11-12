@@ -384,6 +384,80 @@ impl Cpu {
         Ok(())
     }
 
+    pub fn check_interrupt(&mut self) -> Option<Interrupt> {
+        // When a hart is executing in privilege mode x, interrupts are
+        // globally enabled when xIE=1 and globally disabled when xIE=0.
+        // Interrupts for lower-privilege modes, w<x, are always globally
+        // disabled regardless of the setting of any global wIE bit for
+        // the lower-privilege mode. Interrupts for higher-privilege modes,
+        // y>x, are always globally enabled regardless of the setting of
+        // the global yIE bit for the higher-privilege mode.
+        // Higher-privilege-level code can use separate per-interrupt
+        // enable bits to disable selected higher-privilege-mode interrupts
+        // before ceding control to a lower-privilege mode.
+
+        // An interrupt i will trap to M-mode (causing the privilege mode
+        // to change to M-mode) if all of the following are true: (a) either
+        // the current privilege mode is M and the MIE bit in the mstatus
+        // register is set, or the current privilege mode has less privilege
+        // than M-mode; (b) bit i is set in both mip and mie; and (c) if
+        // register mideleg exists, bit i is not set in mideleg.
+
+        // First, check if the hart is in Machine mode and if interrupts are enabled (MIE = 1)
+        if self.mode == Mode::Machine && (self.csr.load(MSTATUS) & (1 << 3) == 0) {
+            // If MIE is 0, no interrupts should be handled in Machine mode
+            return None;
+        }
+
+        // Check for any pending interrupts in Machine mode
+        // MIE enables interrupts for Machine mode, and MIP holds the pending interrupts for M-mode
+        let machine_pending = self.csr.load(MIE) & self.csr.load(MIP);
+
+        if (machine_pending & 1 << 11) != 0 {
+            self.csr.store(MIP, self.csr.load(MIP) & !(1 << 11));
+            return Some(Interrupt::MachineExternalInterrupt);
+        }
+        if (machine_pending & 1 << 3) != 0 {
+            self.csr.store(MIP, self.csr.load(MIP) & !(1 << 3));
+            return Some(Interrupt::MachineSoftwareInterrupt);
+        }
+        if (machine_pending & 1 << 7) != 0 {
+            self.csr.store(MIP, self.csr.load(MIP) & !(1 << 7));
+            return Some(Interrupt::MachineTimerInterrupt);
+        }
+
+        // If still in Machine mode and no interrupt was handled, return None
+        // Machine mode cannot handle Supervisor interrupts, so exit early
+        if self.mode == Mode::Machine {
+            return None;
+        }
+        
+        // In Supervisor mode, check if Supervisor interrupts are enabled (SIE = 1)
+        if self.mode == Mode::Supervisor && (self.csr.load(SSTATUS) & (1 << 1) == 0) {
+            // If SIE is 0, no Supervisor interrupts will be handled
+            return None;
+        }
+
+        // Now in Supervisor mode, and Supervisor interrupts are enabled (SIE = 1)
+        // Check for pending Supervisor interrupts by examining SIP (pending) and SIE (enabled)
+        let supervisor_pending = self.csr.load(SIE) & self.csr.load(SIP);
+
+        if (supervisor_pending & 1 << 9) != 0 {
+            self.csr.store(SIP, self.csr.load(SIP) & !(1 << 9));
+            return Some(Interrupt::SupervisorExternalInterrupt);
+        }
+        if (supervisor_pending & 1 << 1) != 0 {
+            self.csr.store(SIP, self.csr.load(SIP) & !(1 << 1));
+            return Some(Interrupt::SupervisorSoftwareInterrupt);
+        }
+        if (supervisor_pending & 1 << 5) != 0 {
+            self.csr.store(SIP, self.csr.load(SIP) & !(1 << 5));
+            return Some(Interrupt::SupervisorTimerInterrupt);
+        }
+        // If no interrupt, return None
+        return None;
+    }
+
     pub fn handle_exception(&mut self, exception: Exception) {
         let exception_pc = self.pc;
         let prev_mode = self.mode;
