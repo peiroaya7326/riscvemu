@@ -1,9 +1,9 @@
 test.bin: test.c
-	riscv64-unknown-elf-gcc -march=rv64g -nostdlib -Wl,-Ttext=0x0 -o test test.c
+	riscv64-unknown-elf-gcc -march=rv64g -mcmodel=medany -nostdlib -T test.ld -o test test.c
 	riscv64-unknown-elf-objcopy -O binary test test.bin
 
 objdump:
-	riscv64-unknown-elf-objdump -D test
+	riscv64-unknown-elf-objdump -d test
 
 clean:
 	rm -f test

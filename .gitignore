@@ -1,5 +1,6 @@
 /target
 test.c
 test.s
+test.ld
 test
 test.bin
