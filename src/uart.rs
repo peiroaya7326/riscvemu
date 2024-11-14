@@ -1,7 +1,10 @@
 use crate::exception::*;
 use crate::lib::address::*;
+use crate::plic::*;
+use std::cell::RefCell;
 use std::io::Read;
 use std::io::{self, Write};
+use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
@@ -23,14 +26,15 @@ pub const LSR_THR_EMPTY: u8 = 1 << 5;
 
 pub struct UART {
     uart: Arc<(Mutex<[u8; UART_SIZE as usize]>, Condvar)>,
+    plic: Rc<RefCell<Plic>>,
 }
 
 impl UART {
-    pub fn new() -> Self {
+    pub fn new(plic: Rc<RefCell<Plic>>) -> Self {
         let uart = Arc::new((Mutex::new([0u8; UART_SIZE as usize]), Condvar::new()));
         let uart_for_recieve = Arc::clone(&uart);
         let recieve_uart_loop = thread::spawn(move || Self::recieve_uart_loop(uart_for_recieve));
-        Self { uart }
+        Self { uart, plic }
     }
 
     pub fn recieve_uart_loop(uart_for_read: Arc<(Mutex<[u8; UART_SIZE as usize]>, Condvar)>) {
