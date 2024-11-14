@@ -5,6 +5,8 @@ mod dram;
 mod exception;
 mod interrupt;
 mod lib;
+mod plic;
+mod uart;
 
 use cpu::*;
 use exception::*;
