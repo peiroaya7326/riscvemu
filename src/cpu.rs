@@ -409,6 +409,8 @@ impl Cpu {
             return None;
         }
 
+        let irq = self.bus.plic.borrow_mut().claim();
+
         // Check for any pending interrupts in Machine mode
         // MIE enables interrupts for Machine mode, and MIP holds the pending interrupts for M-mode
         let machine_pending = self.csr.load(MIE) & self.csr.load(MIP);
