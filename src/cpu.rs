@@ -431,7 +431,7 @@ impl Cpu {
         if self.mode == Mode::Machine {
             return None;
         }
-        
+
         // In Supervisor mode, check if Supervisor interrupts are enabled (SIE = 1)
         if self.mode == Mode::Supervisor && (self.csr.load(SSTATUS) & (1 << 1) == 0) {
             // If SIE is 0, no Supervisor interrupts will be handled
@@ -606,7 +606,7 @@ impl Cpu {
                 let stvec = self.csr.load(STVEC);
                 let base = stvec & !0b11;
                 let mode = stvec & 0b11;
-                self.pc  = match mode {
+                self.pc = match mode {
                     // Direct
                     0b00 => base,
                     // Vectored

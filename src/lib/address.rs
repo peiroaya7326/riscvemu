@@ -1,5 +1,15 @@
 #![allow(unused)]
 
+pub const PLIC_BASE: u64 = 0xc00_0000;
+// The size of the PLIC memory-mapped region, calculated as:
+// 0x200000: the base region size (2MB) for the PLIC registers
+// (2 * 0x1000): additional space for interrupt contexts, where each context size is 4KB
+// This accounts for interrupt contexts for a single core in M and S modes, each having a 4KB area
+pub const PLIC_SIZE: u64 = (0x200000 + (1 * 2) * 0x1000);
+
+pub const UART_BASE: u64 = 0x1000_0000;
+pub const UART_SIZE: u64 = 0x100;
+
 pub const DRAM_BASE: u64 = 0x8000_0000;
 pub const DRAM_SIZE: u64 = 1024 * 1024 * 128;
 
