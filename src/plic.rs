@@ -16,58 +16,55 @@ pub struct Plic {
 
 impl Plic {
     pub fn new() -> Self {
-        let mut plic = [0u8; PLIC_SIZE as usize];
+        let plic = [0u8; PLIC_SIZE as usize];
         Self {
             plic,
             peripherals_irq: Vec::new(),
         }
     }
 
+    pub fn add_irq(&mut self, irq: u64) {
+        self.peripherals_irq.push(irq);
+    }
+
     pub fn set_pending(&mut self, irq: u64) {
         let index = irq as usize / 8;
         let offset = irq as usize % 8;
-        self.plic[(INTERRUPT_PENDING - PLIC_BASE) as usize + index] = 1 << offset;
+        self.plic[(INTERRUPT_PENDING - PLIC_BASE) as usize + index] |= 1 << offset;
+    }
+
+    pub fn clear_pending(&mut self, irq: u64) {
+        let index = irq as usize / 8;
+        let offset = irq as usize % 8;
+        self.plic[(INTERRUPT_PENDING - PLIC_BASE) as usize + index] &= !(1 << offset);
+    }
+
+    pub fn get_source_priority(&self, irq: u64) -> u64 {
+        let irq_address = INTERRUPT_PRIORITY + irq * 4;
+        return self.load(irq_address, 32).unwrap();
+    }
+
+    pub fn get_source_pending(&self, irq: u64) -> bool {
+        let index = irq / 8;
+        let offset = irq % 8;
+        self.load(INTERRUPT_PENDING + index, 8).unwrap() >> offset & 0b1 != 0
+    }
+
+    pub fn get_source_enable(&self, irq: u64, hart: u64) -> bool {
+        let enable_address = INTERRUPT_ENABLES + 0x80 * hart;
+        let index = irq / 8;
+        let offset = irq % 8;
+        self.load(enable_address + index, 8).unwrap() >> offset & 0b1 != 0
+    }
+
+    pub fn get_hart_priority(&self, hart: u64) -> u64 {
+        let hart_address = PRIORITY_THRESHOLD + hart * 0x1000;
+        return self.load(hart_address, 32).unwrap();
     }
 
     pub fn check_pending(&self) -> Option<u64> {
-        let mut highest_priority_irq = None;
-        let mut highest_priority = 0;
-
-        // Considering hart1 (supervisor mode), retrieving its threshold register value
-        let hart1_threshold_addr = PRIORITY_THRESHOLD + 0x1000; // Address for hart1's threshold register
-        let hart_threshold = self.load(hart1_threshold_addr - PLIC_BASE, 32).unwrap();
-
-        // Iterate through all the registered peripheral IRQs to find pending interrupts
-        for &irq in &self.peripherals_irq {
-            let index = irq as usize / 8;
-            let offset = irq as usize % 8;
-
-            // Check if the IRQ is in a pending state
-            let is_pending =
-                (self.plic[(INTERRUPT_PENDING - PLIC_BASE) as usize + index] & (1 << offset)) != 0;
-
-            // Compute the address for hart1's enable register and check if the IRQ is enabled
-            let hart1_enable_addr = INTERRUPT_ENABLES + 0x80; // Offset 0x80 corresponds to hart1 (supervisor mode) enable base
-            let is_enabled =
-                (self.plic[(hart1_enable_addr - PLIC_BASE) as usize + index] & (1 << offset)) != 0;
-
-            // If the interrupt is not pending or not enabled, skip it
-            if !(is_pending && is_enabled) {
-                continue;
-            }
-
-            // Check the priority of the interrupt
-            let priority_addr = INTERRUPT_PRIORITY + irq * 4;
-            let priority = self.load(priority_addr - PLIC_BASE, 32).unwrap();
-
-            // If the interrupt priority is greater than the hart's threshold and higher than the current highest priority, update the result
-            if priority > hart_threshold && priority > highest_priority {
-                highest_priority = priority;
-                highest_priority_irq = Some(irq);
-            }
-        }
-
-        highest_priority_irq
+        // TODO
+        return None;
     }
 
     pub fn claim(&mut self) -> Option<u64> {
