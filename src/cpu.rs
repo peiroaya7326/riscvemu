@@ -42,7 +42,7 @@ impl Cpu {
         }
     }
     /// Load a value from a dram.
-    pub fn load(&self, addr: u64, size: u64) -> Result<u64, Exception> {
+    pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
         self.bus.load(addr, size)
     }
 
@@ -51,7 +51,7 @@ impl Cpu {
         self.bus.store(addr, size, value)
     }
 
-    pub fn fetch(&self) -> Result<u64, Exception> {
+    pub fn fetch(&mut self) -> Result<u64, Exception> {
         match self.bus.load(self.pc, 32) {
             Ok(inst) => Ok(inst),
             Err(e) => Err(e),
@@ -409,7 +409,7 @@ impl Cpu {
             return None;
         }
 
-        let irq = self.bus.plic.borrow_mut().claim();
+        // let irq = self.bus.plic.borrow_mut().claim();
 
         // Check for any pending interrupts in Machine mode
         // MIE enables interrupts for Machine mode, and MIP holds the pending interrupts for M-mode

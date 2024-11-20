@@ -22,9 +22,12 @@ impl Bus {
         }
     }
 
-    pub fn load(&self, addr: u64, size: u64) -> Result<u64, Exception> {
+    pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
+        if (PLIC_BASE <= addr) && (addr < PLIC_BASE + PLIC_SIZE) {
+            return self.plic.borrow_mut().load(addr, size);
+        }
         if (UART_BASE <= addr) && (addr < UART_BASE + UART_SIZE) {
-            return self.uart.load(addr);
+            return self.uart.load(addr, size);
         }
         if (DRAM_BASE <= addr) && (addr < DRAM_BASE + DRAM_SIZE) {
             return self.dram.load(addr, size);
@@ -32,10 +35,12 @@ impl Bus {
         Err(Exception::LoadAccessFault(addr))
     }
     pub fn store(&mut self, addr: u64, size: u64, value: u64) -> Result<(), Exception> {
+        if (PLIC_BASE <= addr) && (addr < PLIC_BASE + PLIC_SIZE) {
+            return self.plic.borrow_mut().store(addr, size, value);
+        }
         if (UART_BASE <= addr) && (addr < UART_BASE + UART_SIZE) {
             return self.uart.store(addr, value);
         }
-
         if (DRAM_BASE <= addr) && (addr < DRAM_BASE + DRAM_SIZE) {
             return self.dram.store(addr, size, value);
         }

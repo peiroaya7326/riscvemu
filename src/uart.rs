@@ -1,12 +1,10 @@
 use crate::exception::*;
 use crate::lib::address::*;
 use crate::plic::*;
+use emu_nb_stdin::EmuNbStdin;
 use std::cell::RefCell;
-use std::io::Read;
 use std::io::{self, Write};
 use std::rc::Rc;
-use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 
 pub const UART_IRQ: u64 = 10;
 
@@ -25,76 +23,56 @@ pub const LSR_DATA_READY: u8 = 1;
 pub const LSR_THR_EMPTY: u8 = 1 << 5;
 
 pub struct UART {
-    uart: Arc<(Mutex<[u8; UART_SIZE as usize]>, Condvar)>,
+    uart: Vec<u8>,
+    in_fd: EmuNbStdin,
     plic: Rc<RefCell<Plic>>,
 }
 
 impl UART {
     pub fn new(plic: Rc<RefCell<Plic>>) -> Self {
-        let uart = Arc::new((Mutex::new([0u8; UART_SIZE as usize]), Condvar::new()));
-        let uart_for_recieve = Arc::clone(&uart);
-        let recieve_uart_loop = thread::spawn(move || Self::recieve_uart_loop(uart_for_recieve));
-        Self { uart, plic }
-    }
-
-    pub fn recieve_uart_loop(uart_for_read: Arc<(Mutex<[u8; UART_SIZE as usize]>, Condvar)>) {
-        let mut input_buffer = [0u8; 1];
-
-        loop {
-            match io::stdin().read(&mut input_buffer) {
-                Ok(_) => {
-                    let (uart_buffer, condvar) = &*uart_for_read;
-                    let mut uart_buffer = uart_buffer
-                        .lock()
-                        .expect("Failed to lock UART buffer for recieving");
-
-                    // Wait if Transmitter Holding Register (THR) is empty
-                    while uart_buffer[(LSR - UART_BASE) as usize] & LSR_DATA_READY == 1 {
-                        uart_buffer = condvar
-                            .wait(uart_buffer)
-                            .expect("Failed to wait on UART condition variable");
-                    }
-                    uart_buffer[0] = input_buffer[0];
-                    println!("Success {}", input_buffer[0]);
-                }
-                Err(e) => {
-                    eprintln!("Error reading UART input: {:?}", e);
-                }
-            }
+        let mut uart = vec![0u8; UART_SIZE as usize];
+        uart[(LSR - UART_BASE) as usize] = LSR_THR_EMPTY;
+        Self {
+            uart,
+            in_fd: EmuNbStdin::new(),
+            plic,
         }
     }
 
-    pub fn load(&self, addr: u64) -> Result<u64, Exception> {
-        // match addr {}
-        let (uart_buffer, cvar) = &*self.uart;
-        let mut uart_buffer = uart_buffer
-            .lock()
-            .expect("Failed to lock UART buffer for reading");
+    pub fn check_interrupt(&mut self) {
+        if self.in_fd.poll() {
+            self.uart[(LSR - UART_BASE) as usize] |= LSR_DATA_READY;
+            self.plic.borrow_mut().set_pending(UART_IRQ);
+        }
+    }
 
+    pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
+        if size != 8 {
+            return Err(Exception::LoadAccessFault(addr));
+        }
         match addr {
             RHR => {
-                cvar.notify_one();
-                uart_buffer[(addr - UART_BASE) as usize] &= !LSR_DATA_READY;
+                self.uart[(LSR - UART_BASE) as usize] &= !LSR_DATA_READY;
+                if let Some(value) = self.in_fd.receive() {
+                    Ok(value as u64)
+                } else {
+                    Err(Exception::LoadAccessFault(addr))
+                }
             }
-            _ => {}
+            _ => Ok(self.uart[(addr - RHR) as usize] as u64),
         }
-        Ok(uart_buffer[(addr - UART_BASE) as usize] as u64)
     }
 
     pub fn store(&mut self, addr: u64, value: u64) -> Result<(), Exception> {
-        let (uart_buffer, cvar) = &*self.uart;
-        let mut uart_buffer = uart_buffer
-            .lock()
-            .expect("Failed to lock UART buffer for writing");
         match addr {
             THR => {
-                print!("{}", (value & 0xff) as u8 as char);
+                print!("{}", value as u8 as char);
                 io::stdout()
                     .flush()
                     .expect("Failed to flush stdout after writing to UART");
             }
             _ => {
-                uart_buffer[(addr - UART_BASE) as usize] = (value & 0xff) as u8;
+                self.uart[(addr - UART_BASE) as usize] = (value & 0xff) as u8;
             }
         }
         Ok(())

@@ -3,5 +3,13 @@
 version = 3
 
 [[package]]
+name = "emu_nb_stdin"
+version = "0.1.0"
+source = "git+https://github.com/peiroaya7326/emu_nb_stdin#f5a5a872e1d9f7d292fbc89077831af6f576b64a"
+
+[[package]]
 name = "rrvemu"
 version = "0.1.0"
+dependencies = [
+ "emu_nb_stdin",
+]
