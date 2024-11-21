@@ -63,8 +63,42 @@ impl Plic {
     }
 
     pub fn check_pending(&self) -> Option<u64> {
-        // TODO
-        return None;
+        let mut highest_priority_irq = None; // Stores the IRQ with the highest priority found so far.
+        let mut highest_priority = 0; // Tracks the highest priority among the pending IRQs.
+
+        // Single-core mode: hardcode hart 1 (Supervisor mode).
+        let hart = 1;
+
+        // Retrieve the priority threshold for hart 1.
+        let hart_threshold = self.get_hart_priority(hart);
+
+        // Iterate through all registered IRQs.
+        for &irq in &self.peripherals_irq {
+            // Check if the IRQ is in a pending state.
+            let is_pending = self.get_source_pending(irq);
+
+            // Check if hart 1 has enabled this IRQ.
+            let is_enable = self.get_source_enable(irq, hart);
+
+            // Skip this IRQ if it is not pending or not enabled.
+            if !(is_pending && is_enable) {
+                continue;
+            }
+
+            // Retrieve the priority of the current IRQ.
+            let priority = self.get_source_priority(irq);
+
+            // Update the highest priority IRQ if:
+            // - The priority of this IRQ is higher than the hart's threshold.
+            // - The priority is greater than the current highest priority.
+            if priority > hart_threshold && priority > highest_priority {
+                highest_priority = priority;
+                highest_priority_irq = Some(irq);
+            }
+        }
+
+        // Return the IRQ with the highest priority, or None if no pending IRQs are found.
+        highest_priority_irq
     }
 
     pub fn claim(&mut self) -> Option<u64> {

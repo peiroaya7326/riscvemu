@@ -31,7 +31,8 @@ pub struct UART {
 impl UART {
     pub fn new(plic: Rc<RefCell<Plic>>) -> Self {
         let mut uart = vec![0u8; UART_SIZE as usize];
-        uart[(LSR - UART_BASE) as usize] = LSR_THR_EMPTY;
+        uart[(LSR - UART_BASE) as usize] |= LSR_THR_EMPTY;
+        plic.borrow_mut().add_irq(UART_IRQ);
         Self {
             uart,
             in_fd: EmuNbStdin::new(),
