@@ -409,8 +409,6 @@ impl Cpu {
             return None;
         }
 
-        // let irq = self.bus.plic.borrow_mut().claim();
-
         // Check for any pending interrupts in Machine mode
         // MIE enables interrupts for Machine mode, and MIP holds the pending interrupts for M-mode
         let machine_pending = self.csr.load(MIE) & self.csr.load(MIP);
@@ -432,6 +430,18 @@ impl Cpu {
         // Machine mode cannot handle Supervisor interrupts, so exit early
         if self.mode == Mode::Machine {
             return None;
+        }
+
+        // Check if there are any interrupts to be triggered from the UART.
+        // If an interrupt occurs, notify the PLIC
+        self.bus.uart.check_interrupt();
+        // Attempt to claim a pending interrupt from the PLIC.
+        // If a new interrupt is pending,
+        // set the Supervisor External Interrupt Pending bit (SEIP, bit 9) in SIP.
+        // This ensures that the interrupt handling logic in Supervisor mode
+        // can detect and properly handle the interrupt.
+        if let Some(_irq) = self.bus.plic.borrow_mut().claim() {
+            self.csr.store(SIP, self.csr.load(SIP) | (1 << 9));
         }
 
         // In Supervisor mode, check if Supervisor interrupts are enabled (SIE = 1)
