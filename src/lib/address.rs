@@ -1,5 +1,8 @@
 #![allow(unused)]
 
+pub const CLINT_BASE: u64 = 0x200_0000;
+pub const CLINT_SIZE: u64 = 0xc000;
+
 pub const PLIC_BASE: u64 = 0xc00_0000;
 // The size of the PLIC memory-mapped region, calculated as:
 // 0x200000: the base region size (2MB) for the PLIC registers

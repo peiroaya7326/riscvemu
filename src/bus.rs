@@ -1,3 +1,4 @@
+use crate::clint::Clint;
 use crate::dram::*;
 use crate::exception::*;
 use crate::lib::address::*;
@@ -10,15 +11,17 @@ pub struct Bus {
     pub dram: Dram,
     pub plic: Rc<RefCell<Plic>>,
     pub uart: UART,
+    pub clint: Clint,
 }
 
 impl Bus {
-    pub fn new(binary: Vec<u8>) -> Self {
+    pub fn new(timer_freq: u64, binary: Vec<u8>) -> Self {
         let plic = Rc::new(RefCell::new(Plic::new()));
         Self {
             dram: Dram::new(binary),
             uart: UART::new(Rc::clone(&plic)),
             plic,
+            clint: Clint::new(timer_freq),
         }
     }
 

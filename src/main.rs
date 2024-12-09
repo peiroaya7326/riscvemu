@@ -25,8 +25,8 @@ fn main() -> io::Result<()> {
     let mut file = File::open(&args[1])?;
     let mut binary = Vec::new();
     file.read_to_end(&mut binary)?;
-
-    let mut cpu = Cpu::new(binary);
+    let timer_freq = 650000;
+    let mut cpu = Cpu::new(timer_freq, binary);
 
     loop {
         let inst = match cpu.fetch() {

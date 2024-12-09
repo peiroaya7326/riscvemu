@@ -32,14 +32,14 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(binary: Vec<u8>) -> Self {
+    pub fn new(timer_freq: u64, binary: Vec<u8>) -> Self {
         let mut regs = [0; 32];
         regs[2] = (DRAM_BASE + DRAM_SIZE) as u64;
         Self {
             regs,
             pc: DRAM_BASE,
             mode: Mode::Machine,
-            bus: Bus::new(binary),
+            bus: Bus::new(timer_freq, binary),
             csr: Csr::new(),
         }
     }
@@ -442,6 +442,21 @@ impl Cpu {
         if self.mode == Mode::Machine {
             return None;
         }
+
+        let (stip, ssip) = self.bus.clint.check_interrupts(1);
+        let mut sip_value = self.csr_load(SIP);
+        if stip {
+            sip_value |= 1 << 5;
+        } else {
+            sip_value &= !(1 << 5);
+        }
+
+        if ssip {
+            sip_value |= 1 << 1;
+        } else {
+            sip_value &= !(1 << 1);
+        }
+        self.csr_store(SIP, sip_value);
 
         // Check if there are any interrupts to be triggered from the UART.
         // If an interrupt occurs, notify the PLIC
