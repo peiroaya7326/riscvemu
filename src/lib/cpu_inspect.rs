@@ -37,17 +37,17 @@ impl Cpu {
             "{}\n{}\n",
             format!(
                 "mstatus = {:<#18x}  mtvec = {:<#18x}  mepc = {:<#18x}  mcause = {:<#18x}",
-                self.csr.load(MSTATUS),
-                self.csr.load(MTVEC),
-                self.csr.load(MEPC),
-                self.csr.load(MCAUSE),
+                self.csr_load(MSTATUS),
+                self.csr_load(MTVEC),
+                self.csr_load(MEPC),
+                self.csr_load(MCAUSE),
             ),
             format!(
                 "sstatus = {:<#18x}  stvec = {:<#18x}  sepc = {:<#18x}  scause = {:<#18x}",
-                self.csr.load(SSTATUS),
-                self.csr.load(STVEC),
-                self.csr.load(SEPC),
-                self.csr.load(SCAUSE),
+                self.csr_load(SSTATUS),
+                self.csr_load(STVEC),
+                self.csr_load(SEPC),
+                self.csr_load(SCAUSE),
             ),
         );
         println!("{}", csr_output);

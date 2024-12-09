@@ -1,6 +1,4 @@
+/.vscode
 /target
-test.c
-test.s
-test.ld
-test
+/os_test
 test.bin

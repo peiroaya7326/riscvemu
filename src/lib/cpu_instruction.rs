@@ -353,22 +353,22 @@ impl Cpu {
 
     #[inline(always)]
     pub fn execute_csrrw(&mut self, csr_addr: u64, rd: u64, rs1: u64) {
-        let t = self.csr.load(csr_addr);
-        self.csr.store(csr_addr, self.regs[rs1 as usize]);
+        let t = self.csr_load(csr_addr);
+        self.csr_store(csr_addr, self.regs[rs1 as usize]);
         self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
     }
 
     #[inline(always)]
     pub fn execute_csrrs(&mut self, csr_addr: u64, rd: u64, rs1: u64) {
-        let t = self.csr.load(csr_addr);
-        self.csr.store(csr_addr, t | self.regs[rs1 as usize]);
+        let t = self.csr_load(csr_addr);
+        self.csr_store(csr_addr, t | self.regs[rs1 as usize]);
         self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
     }
 
     #[inline(always)]
     pub fn execute_csrrc(&mut self, csr_addr: u64, rd: u64, rs1: u64) {
-        let t = self.csr.load(csr_addr);
-        self.csr.store(csr_addr, t & (!self.regs[rs1 as usize]));
+        let t = self.csr_load(csr_addr);
+        self.csr_store(csr_addr, t & (!self.regs[rs1 as usize]));
         self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
     }
 
@@ -382,22 +382,22 @@ impl Cpu {
 
     #[inline(always)]
     pub fn execute_csrrwi(&mut self, csr_addr: u64, rd: u64, uimm: u64) {
-        let t = self.csr.load(csr_addr);
-        self.csr.store(csr_addr, uimm);
+        let t = self.csr_load(csr_addr);
+        self.csr_store(csr_addr, uimm);
         self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
     }
 
     #[inline(always)]
     pub fn execute_csrrsi(&mut self, csr_addr: u64, rd: u64, uimm: u64) {
-        let t = self.csr.load(csr_addr);
-        self.csr.store(csr_addr, t | uimm);
+        let t = self.csr_load(csr_addr);
+        self.csr_store(csr_addr, t | uimm);
         self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
     }
 
     #[inline(always)]
     pub fn execute_csrrci(&mut self, csr_addr: u64, rd: u64, uimm: u64) {
-        let t = self.csr.load(csr_addr);
-        self.csr.store(csr_addr, t & (!uimm));
+        let t = self.csr_load(csr_addr);
+        self.csr_store(csr_addr, t & (!uimm));
         self.regs[rd as usize] = if rd == 0 { self.regs[rd as usize] } else { t };
     }
 
@@ -562,7 +562,7 @@ impl Cpu {
         // changed to y; xPIE is set to 1; and xPP is set to the
         // least-privileged supported mode (U if U-mode is
         // implemented, else M). If y≠M, xRET also sets MPRV=0.
-        let mut sstatus = self.csr.load(SSTATUS);
+        let mut sstatus = self.csr_load(SSTATUS);
         // When an SRET instruction is executed to return from the trap handler,
         // the privilege level is set to user mode if the SPP bit is 0,
         // or supervisor mode if the SPP bit is 1; SPP is then set to 0.
@@ -571,9 +571,9 @@ impl Cpu {
             _ => Mode::Supervisor,
         };
         // SET MPRV to 0
-        let mut mstatus = self.csr.load(MSTATUS);
+        let mut mstatus = self.csr_load(MSTATUS);
         mstatus &= !(1 << 17);
-        self.csr.store(MSTATUS, mstatus);
+        self.csr_store(MSTATUS, mstatus);
         // set SPP to 0
         sstatus &= !(1 << 8);
         // When an SRET instruction is executed,
@@ -585,9 +585,9 @@ impl Cpu {
         sstatus |= spie << 1;
         // set SPIE to 1
         sstatus |= 1 << 5;
-        self.csr.store(SSTATUS, sstatus);
+        self.csr_store(SSTATUS, sstatus);
         // update program counter
-        self.pc = self.csr.load(SEPC);
+        self.pc = self.csr_load(SEPC);
     }
 
     pub fn execute_mret(&mut self) {
@@ -598,7 +598,7 @@ impl Cpu {
         // changed to y; xPIE is set to 1; and xPP is set to the
         // least-privileged supported mode (U if U-mode is
         // implemented, else M). If y≠M, xRET also sets MPRV=0.
-        let mut mstatus = self.csr.load(MSTATUS);
+        let mut mstatus = self.csr_load(MSTATUS);
         let mpie = (mstatus >> 7) & 0b1;
         // clear MIE
         mstatus &= !(1 << 3);
@@ -619,8 +619,8 @@ impl Cpu {
         mstatus |= 1 << 7;
         // set MPP to least-privileged supported mode (U: 0b00)
         mstatus &= !(0b11) << 11;
-        self.csr.store(MSTATUS, mstatus);
+        self.csr_store(MSTATUS, mstatus);
         // update program counter
-        self.pc = self.csr.load(MEPC);
+        self.pc = self.csr_load(MEPC);
     }
 }

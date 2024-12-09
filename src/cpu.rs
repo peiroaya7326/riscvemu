@@ -3,6 +3,8 @@ use crate::csr::*;
 use crate::exception::*;
 use crate::interrupt::*;
 use crate::lib::address::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Mode {
@@ -49,6 +51,14 @@ impl Cpu {
     /// Store a value to a dram.
     pub fn store(&mut self, addr: u64, size: u64, value: u64) -> Result<(), Exception> {
         self.bus.store(addr, size, value)
+    }
+
+    pub fn csr_load(&self, addr: u64) -> u64 {
+        self.csr.load(addr)
+    }
+
+    pub fn csr_store(&mut self, addr: u64, value: u64) {
+        self.csr.store(addr, value);
     }
 
     pub fn fetch(&mut self) -> Result<u64, Exception> {
@@ -404,25 +414,26 @@ impl Cpu {
         // register mideleg exists, bit i is not set in mideleg.
 
         // First, check if the hart is in Machine mode and if interrupts are enabled (MIE = 1)
-        if self.mode == Mode::Machine && (self.csr.load(MSTATUS) & (1 << 3) == 0) {
+        if self.mode == Mode::Machine && (self.csr_load(MSTATUS) & (1 << 3) == 0) {
             // If MIE is 0, no interrupts should be handled in Machine mode
             return None;
         }
 
         // Check for any pending interrupts in Machine mode
         // MIE enables interrupts for Machine mode, and MIP holds the pending interrupts for M-mode
-        let machine_pending = self.csr.load(MIE) & self.csr.load(MIP);
+        let machine_pending = self.csr_load(MIE) & self.csr_load(MIP);
 
+        let mip_value = self.csr_load(MIP);
         if (machine_pending & 1 << 11) != 0 {
-            self.csr.store(MIP, self.csr.load(MIP) & !(1 << 11));
+            self.csr_store(MIP, mip_value & !(1 << 11));
             return Some(Interrupt::MachineExternalInterrupt);
         }
         if (machine_pending & 1 << 3) != 0 {
-            self.csr.store(MIP, self.csr.load(MIP) & !(1 << 3));
+            self.csr_store(MIP, mip_value & !(1 << 3));
             return Some(Interrupt::MachineSoftwareInterrupt);
         }
         if (machine_pending & 1 << 7) != 0 {
-            self.csr.store(MIP, self.csr.load(MIP) & !(1 << 7));
+            self.csr_store(MIP, mip_value & !(1 << 7));
             return Some(Interrupt::MachineTimerInterrupt);
         }
 
@@ -440,30 +451,36 @@ impl Cpu {
         // set the Supervisor External Interrupt Pending bit (SEIP, bit 9) in SIP.
         // This ensures that the interrupt handling logic in Supervisor mode
         // can detect and properly handle the interrupt.
-        if let Some(_irq) = self.bus.plic.borrow_mut().claim() {
-            self.csr.store(SIP, self.csr.load(SIP) | (1 << 9));
+        let irq = self.bus.plic.borrow_mut().claim();
+        match irq {
+            Some(_irq) => {
+                let sip_value = self.csr_load(SIP);
+                self.csr_store(SIP, sip_value | (1 << 9));
+            }
+            _ => {}
         }
 
         // In Supervisor mode, check if Supervisor interrupts are enabled (SIE = 1)
-        if self.mode == Mode::Supervisor && (self.csr.load(SSTATUS) & (1 << 1) == 0) {
+        if self.mode == Mode::Supervisor && (self.csr_load(SSTATUS) & (1 << 1) == 0) {
             // If SIE is 0, no Supervisor interrupts will be handled
             return None;
         }
 
         // Now in Supervisor mode, and Supervisor interrupts are enabled (SIE = 1)
         // Check for pending Supervisor interrupts by examining SIP (pending) and SIE (enabled)
-        let supervisor_pending = self.csr.load(SIE) & self.csr.load(SIP);
+        let supervisor_pending = self.csr_load(SIE) & self.csr_load(SIP);
 
+        let sip_value = self.csr_load(SIP);
         if (supervisor_pending & 1 << 9) != 0 {
-            self.csr.store(SIP, self.csr.load(SIP) & !(1 << 9));
+            self.csr_store(SIP, sip_value & !(1 << 9));
             return Some(Interrupt::SupervisorExternalInterrupt);
         }
         if (supervisor_pending & 1 << 1) != 0 {
-            self.csr.store(SIP, self.csr.load(SIP) & !(1 << 1));
+            self.csr_store(SIP, sip_value & !(1 << 1));
             return Some(Interrupt::SupervisorSoftwareInterrupt);
         }
         if (supervisor_pending & 1 << 5) != 0 {
-            self.csr.store(SIP, self.csr.load(SIP) & !(1 << 5));
+            self.csr_store(SIP, sip_value & !(1 << 5));
             return Some(Interrupt::SupervisorTimerInterrupt);
         }
         // If no interrupt, return None
@@ -476,7 +493,7 @@ impl Cpu {
         let cause = exception.code();
 
         let is_user_or_supervisor = prev_mode != Mode::Machine;
-        let medeleg = self.csr.load(MEDELEG);
+        let medeleg = self.csr_load(MEDELEG);
         let is_exception_delegated = (medeleg.wrapping_shr(cause as u32) & 1) != 0;
         if is_user_or_supervisor && is_exception_delegated {
             self.mode = Mode::Supervisor;
@@ -517,7 +534,7 @@ impl Cpu {
         // xPIE is set to the value of xIE; xIE is set to 0; and xPP is set to y.
         match self.mode {
             Mode::Machine => {
-                let mtvec = self.csr.load(MTVEC);
+                let mtvec = self.csr_load(MTVEC);
                 let base = mtvec & !0b11;
                 let _mode = mtvec & 0b11;
                 // When MODE=Direct, all traps into machine mode cause the pc to be
@@ -527,10 +544,10 @@ impl Cpu {
                 // to be set to the address in the BASE field plus four times the
                 // interrupt cause number.
                 self.pc = base;
-                self.csr.store(MEPC, exception_pc as u64);
-                self.csr.store(MCAUSE, cause);
-                self.csr.store(MTVAL, exception.code());
-                let mut mstatus = self.csr.load(MSTATUS);
+                self.csr_store(MEPC, exception_pc as u64);
+                self.csr_store(MCAUSE, cause);
+                self.csr_store(MTVAL, exception.code());
+                let mut mstatus = self.csr_load(MSTATUS);
                 let mie = (mstatus >> 3) & 0b1;
                 // set xIE = 0
                 mstatus &= !(1 << 3);
@@ -540,17 +557,17 @@ impl Cpu {
                 // set xPP = previous mode
                 mstatus &= !(0b11 << 11);
                 mstatus |= prev_mode.code() << 11;
-                self.csr.store(MSTATUS, mstatus);
+                self.csr_store(MSTATUS, mstatus);
             }
             Mode::Supervisor => {
-                let stvec = self.csr.load(STVEC);
+                let stvec = self.csr_load(STVEC);
                 let base = stvec & !0b11;
                 let _mode = stvec & 0b11;
                 self.pc = base;
-                self.csr.store(SEPC, exception_pc as u64);
-                self.csr.store(SCAUSE, cause);
-                self.csr.store(STVAL, exception.code());
-                let mut sstatus = self.csr.load(SSTATUS);
+                self.csr_store(SEPC, exception_pc as u64);
+                self.csr_store(SCAUSE, cause);
+                self.csr_store(STVAL, exception.code());
+                let mut sstatus = self.csr_load(SSTATUS);
                 let sie = (sstatus >> 1) & 0b1;
                 // set xIE = 0
                 sstatus &= !(1 << 1);
@@ -560,7 +577,7 @@ impl Cpu {
                 // set xPP = previous mode
                 sstatus &= !(0b1 << 8);
                 sstatus |= prev_mode.code() << 8;
-                self.csr.store(SSTATUS, sstatus);
+                self.csr_store(SSTATUS, sstatus);
             }
             _ => {}
         }
@@ -573,14 +590,14 @@ impl Cpu {
         let cause_code = cause & !INTERRUPT_BIT;
 
         let is_user_or_supervisor = prev_mode != Mode::Machine;
-        let mideleg = self.csr.load(MIDELEG);
+        let mideleg = self.csr_load(MIDELEG);
         let is_interrupt_delegated = (mideleg.wrapping_shr(cause_code as u32) & 1) != 0;
         if is_user_or_supervisor && is_interrupt_delegated {
             self.mode = Mode::Supervisor;
         }
         match self.mode {
             Mode::Machine => {
-                let mtvec = self.csr.load(MTVEC);
+                let mtvec = self.csr_load(MTVEC);
                 let base = mtvec & !0b11;
                 let mode = mtvec & 0b11;
                 // When MODE=Direct, all traps into machine mode cause the pc to be
@@ -596,13 +613,13 @@ impl Cpu {
                     0b01 => base + cause_code << 2,
                     _ => unreachable!(),
                 };
-                self.csr.store(MEPC, interrupt_pc as u64);
-                self.csr.store(MCAUSE, cause);
+                self.csr_store(MEPC, interrupt_pc as u64);
+                self.csr_store(MCAUSE, cause);
                 // When a trap is taken into M-mode, mtval is either set to zero or
                 // written with exception-specific information to assist software in
                 // handling the trap.
-                self.csr.store(MTVAL, 0);
-                let mut mstatus = self.csr.load(MSTATUS);
+                self.csr_store(MTVAL, 0);
+                let mut mstatus = self.csr_load(MSTATUS);
                 let mie = (mstatus >> 3) & 0b1;
                 // set xIE = 0
                 mstatus &= !(1 << 3);
@@ -612,10 +629,10 @@ impl Cpu {
                 // set xPP = previous mode
                 mstatus &= !(0b11 << 11);
                 mstatus |= prev_mode.code() << 11;
-                self.csr.store(MSTATUS, mstatus);
+                self.csr_store(MSTATUS, mstatus);
             }
             Mode::Supervisor => {
-                let stvec = self.csr.load(STVEC);
+                let stvec = self.csr_load(STVEC);
                 let base = stvec & !0b11;
                 let mode = stvec & 0b11;
                 self.pc = match mode {
@@ -625,10 +642,10 @@ impl Cpu {
                     0b01 => base + cause_code << 2,
                     _ => unreachable!(),
                 };
-                self.csr.store(SEPC, interrupt_pc as u64);
-                self.csr.store(SCAUSE, cause);
-                self.csr.store(STVAL, 0);
-                let mut sstatus = self.csr.load(SSTATUS);
+                self.csr_store(SEPC, interrupt_pc as u64);
+                self.csr_store(SCAUSE, cause);
+                self.csr_store(STVAL, 0);
+                let mut sstatus = self.csr_load(SSTATUS);
                 let sie = (sstatus >> 1) & 0b1;
                 // set xIE = 0
                 sstatus &= !(1 << 1);
@@ -638,7 +655,7 @@ impl Cpu {
                 // set xPP = previous mode
                 sstatus &= !(0b1 << 8);
                 sstatus |= prev_mode.code() << 8;
-                self.csr.store(SSTATUS, sstatus);
+                self.csr_store(SSTATUS, sstatus);
             }
             _ => {}
         }
