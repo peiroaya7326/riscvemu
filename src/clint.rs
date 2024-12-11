@@ -68,18 +68,17 @@ impl Clint {
     }
 
     pub fn check_interrupts(&mut self, hart_id: u64) -> (bool, bool) {
-        //
-        let time_elapse = self.mtimecmp[hart_id as usize] - self.mtime.get();
-        let (mut stip, mut ssip) = (false, false);
-        // STIP
-        if time_elapse <= 0 {
-            stip = true;
+        let time_elapse = self.mtimecmp[hart_id as usize].saturating_sub(self.mtime.get());
+        let (mut xtip, mut xsip) = (false, false);
+        // xTIP
+        if time_elapse == 0 {
+            xtip = true;
         }
-        // SSIP
+        // xSIP
         if self.msip[hart_id as usize] > 0 {
-            ssip = true;
+            xsip = true;
         }
-        return (stip, ssip);
+        return (xtip, xsip);
     }
 
     pub fn load(&self, addr: u64) -> Result<u64, Exception> {

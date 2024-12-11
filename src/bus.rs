@@ -26,6 +26,9 @@ impl Bus {
     }
 
     pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
+        if (CLINT_BASE <= addr) && (addr < CLINT_BASE + CLINT_SIZE) {
+            return self.clint.load(addr);
+        }
         if (PLIC_BASE <= addr) && (addr < PLIC_BASE + PLIC_SIZE) {
             return self.plic.borrow_mut().load(addr, size);
         }
@@ -38,6 +41,9 @@ impl Bus {
         Err(Exception::LoadAccessFault(addr))
     }
     pub fn store(&mut self, addr: u64, size: u64, value: u64) -> Result<(), Exception> {
+        if (CLINT_BASE <= addr) && (addr < CLINT_BASE + CLINT_SIZE) {
+            return self.clint.store(addr, value);
+        }
         if (PLIC_BASE <= addr) && (addr < PLIC_BASE + PLIC_SIZE) {
             return self.plic.borrow_mut().store(addr, size, value);
         }

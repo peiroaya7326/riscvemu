@@ -401,6 +401,38 @@ impl Cpu {
     }
 
     pub fn check_interrupt(&mut self) -> Option<Interrupt> {
+        let (mtip, msip) = self.bus.clint.check_interrupts(0);
+        let mut mip_value = self.csr_load(MIP);
+        if mtip {
+            mip_value |= 1 << 7;
+        } else {
+            mip_value &= !(1 << 7);
+        }
+
+        if msip {
+            mip_value |= 1 << 3;
+        } else {
+            mip_value &= !(1 << 3);
+        }
+        self.csr_store(MIP, mip_value);
+
+        // Check if there are any interrupts to be triggered from the UART.
+        // If an interrupt occurs, notify the PLIC
+        self.bus.uart.check_interrupt();
+        // Attempt to claim a pending interrupt from the PLIC.
+        // If a new interrupt is pending,
+        // set the Supervisor External Interrupt Pending bit (SEIP, bit 9) in SIP.
+        // This ensures that the interrupt handling logic in Supervisor mode
+        // can detect and properly handle the interrupt.
+        let irq = self.bus.plic.borrow_mut().claim();
+        match irq {
+            Some(_irq) => {
+                let sip_value = self.csr_load(SIP);
+                self.csr_store(SIP, sip_value | (1 << 9));
+            }
+            _ => {}
+        }
+
         // When a hart is executing in privilege mode x, interrupts are
         // globally enabled when xIE=1 and globally disabled when xIE=0.
         // Interrupts for lower-privilege modes, w<x, are always globally
@@ -441,44 +473,6 @@ impl Cpu {
         if (machine_pending & 1 << 7) != 0 {
             self.csr_store(MIP, mip_value & !(1 << 7));
             return Some(Interrupt::MachineTimerInterrupt);
-        }
-
-        // If still in Machine mode and no interrupt was handled, return None
-        // Machine mode cannot handle Supervisor interrupts, so exit early
-        if self.mode == Mode::Machine {
-            return None;
-        }
-
-        let (stip, ssip) = self.bus.clint.check_interrupts(1);
-        let mut sip_value = self.csr_load(SIP);
-        if stip {
-            sip_value |= 1 << 5;
-        } else {
-            sip_value &= !(1 << 5);
-        }
-
-        if ssip {
-            sip_value |= 1 << 1;
-        } else {
-            sip_value &= !(1 << 1);
-        }
-        self.csr_store(SIP, sip_value);
-
-        // Check if there are any interrupts to be triggered from the UART.
-        // If an interrupt occurs, notify the PLIC
-        self.bus.uart.check_interrupt();
-        // Attempt to claim a pending interrupt from the PLIC.
-        // If a new interrupt is pending,
-        // set the Supervisor External Interrupt Pending bit (SEIP, bit 9) in SIP.
-        // This ensures that the interrupt handling logic in Supervisor mode
-        // can detect and properly handle the interrupt.
-        let irq = self.bus.plic.borrow_mut().claim();
-        match irq {
-            Some(_irq) => {
-                let sip_value = self.csr_load(SIP);
-                self.csr_store(SIP, sip_value | (1 << 9));
-            }
-            _ => {}
         }
 
         // In Supervisor mode, check if Supervisor interrupts are enabled (SIE = 1)
