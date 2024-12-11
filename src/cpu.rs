@@ -625,7 +625,7 @@ impl Cpu {
                     // Direct
                     0b00 => base,
                     // Vectored
-                    0b01 => base + cause_code << 2,
+                    0b01 => base + (cause_code << 2),
                     _ => unreachable!(),
                 };
                 self.csr_store(MEPC, interrupt_pc as u64);
@@ -654,7 +654,7 @@ impl Cpu {
                     // Direct
                     0b00 => base,
                     // Vectored
-                    0b01 => base + cause_code << 2,
+                    0b01 => base + (cause_code << 2),
                     _ => unreachable!(),
                 };
                 self.csr_store(SEPC, interrupt_pc as u64);
