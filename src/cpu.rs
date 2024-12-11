@@ -135,9 +135,9 @@ impl Cpu {
                     (_, 0b100) => self.execute_xori(rd, rs1, imm),
                     (_, 0b110) => self.execute_ori(rd, rs1, imm),
                     (_, 0b111) => self.execute_andi(rd, rs1, imm),
-                    (0b000_0000, 0b001) => self.execute_slli(rd, rs1, shamt),
-                    (0b000_0000, 0b101) => self.execute_srli(rd, rs1, shamt),
-                    (0b010_0000, 0b101) => self.execute_srai(rd, rs1, shamt),
+                    (_, 0b001) if funct7 >> 1 == 0 => self.execute_slli(rd, rs1, shamt),
+                    (_, 0b101) if funct7 >> 1 == 0 => self.execute_srli(rd, rs1, shamt),
+                    (_, 0b101) if funct7 >> 1 == 0b01_0000 => self.execute_srai(rd, rs1, shamt),
                     _ => {
                         return Err(Exception::IllegalInstruction(inst));
                     }
@@ -346,8 +346,14 @@ impl Cpu {
                     (0b0, 0b000) => self.execute_ecall()?,
                     (0b1, 0b000) => self.execute_ebreak()?,
                     (0b00010, 0b000) => match funct7 {
-                        0b0001000 => self.execute_sret(),
-                        0b0011000 => self.execute_mret(),
+                        0b0001000 => {
+                            self.execute_sret();
+                            inst_step = 0;
+                        }
+                        0b0011000 => {
+                            self.execute_mret();
+                            inst_step = 0;
+                        }
                         // 0b0111000 => self.execute_mnret(),
                         _ => {
                             return Err(Exception::IllegalInstruction(inst));

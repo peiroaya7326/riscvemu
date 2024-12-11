@@ -618,7 +618,7 @@ impl Cpu {
         // set MPIE to 1
         mstatus |= 1 << 7;
         // set MPP to least-privileged supported mode (U: 0b00)
-        mstatus &= !(0b11) << 11;
+        mstatus &= !(0b11 << 11);
         self.csr_store(MSTATUS, mstatus);
         // update program counter
         self.pc = self.csr_load(MEPC);
