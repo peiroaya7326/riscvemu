@@ -1,7 +1,7 @@
 [package]
-name = "rrvemu"
+name = "riscvemu"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-emu_nb_stdin = { git = "https://github.com/peiroaya7326/emu_nb_stdin" }
+emu_nb_stdin = { path = "src/emu_nb_stdin" }
